@@ -24,6 +24,7 @@ var host = new HostBuilder()
         services.AddTreinAIShared(cosmosEndpoint, databaseName);
         services.AddRepository<Treino>("treinos");
         services.AddRepository<Exercicio>("exercicios");
+        services.AddRepository<Aluno>("alunos");
     })
     .Build();
 
