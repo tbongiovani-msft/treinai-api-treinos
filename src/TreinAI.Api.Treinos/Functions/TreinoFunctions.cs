@@ -18,17 +18,30 @@ namespace TreinAI.Api.Treinos.Functions;
 public class TreinoFunctions
 {
     private readonly IRepository<Treino> _repository;
+    private readonly IRepository<Aluno> _alunoRepo;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<TreinoFunctions> _logger;
 
     public TreinoFunctions(
         IRepository<Treino> repository,
+        IRepository<Aluno> alunoRepo,
         TenantContext tenantContext,
         ILogger<TreinoFunctions> logger)
     {
         _repository = repository;
+        _alunoRepo = alunoRepo;
         _tenantContext = tenantContext;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Resolves the Aluno record ID from the user ID for aluno role users.
+    /// </summary>
+    private async Task<string?> ResolveAlunoRecordIdAsync()
+    {
+        var alunos = await _alunoRepo.QueryAsync(
+            _tenantContext.TenantId, a => a.UserId == _tenantContext.UserId);
+        return alunos.FirstOrDefault()?.Id;
     }
 
     /// <summary>
@@ -60,9 +73,10 @@ public class TreinoFunctions
         }
         else if (_tenantContext.IsAluno)
         {
-            treinos = await _repository.QueryAsync(
-                _tenantContext.TenantId,
-                t => t.AlunoId == _tenantContext.UserId);
+            var alunoRecordId = await ResolveAlunoRecordIdAsync();
+            treinos = alunoRecordId != null
+                ? await _repository.QueryAsync(_tenantContext.TenantId, t => t.AlunoId == alunoRecordId)
+                : Array.Empty<Treino>();
         }
         else
         {
@@ -84,8 +98,12 @@ public class TreinoFunctions
         if (treino == null)
             throw new NotFoundException("Treino", id);
 
-        if (_tenantContext.IsAluno && treino.AlunoId != _tenantContext.UserId)
-            throw new ForbiddenException("Você só pode acessar seus próprios treinos.");
+        if (_tenantContext.IsAluno)
+        {
+            var alunoRecordId = await ResolveAlunoRecordIdAsync();
+            if (treino.AlunoId != alunoRecordId)
+                throw new ForbiddenException("Você só pode acessar seus próprios treinos.");
+        }
 
         return await ValidationHelper.OkAsync(req, treino);
     }
@@ -175,8 +193,12 @@ public class TreinoFunctions
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "treinos/aluno/{alunoId}/ativo")] HttpRequestData req,
         string alunoId)
     {
-        if (_tenantContext.IsAluno && alunoId != _tenantContext.UserId)
-            throw new ForbiddenException("Você só pode acessar seus próprios treinos.");
+        if (_tenantContext.IsAluno)
+        {
+            var alunoRecordId = await ResolveAlunoRecordIdAsync();
+            if (alunoId != alunoRecordId)
+                throw new ForbiddenException("Você só pode acessar seus próprios treinos.");
+        }
 
         var now = DateTime.UtcNow;
         var treinos = await _repository.QueryAsync(
