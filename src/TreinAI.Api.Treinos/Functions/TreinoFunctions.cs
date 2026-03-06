@@ -168,11 +168,11 @@ public class TreinoFunctions
     }
 
     /// <summary>
-    /// GET /api/alunos/{alunoId}/treino-ativo — Get the currently active training plan for a student.
+    /// GET /api/treinos/aluno/{alunoId}/ativo — Get the currently active training plan for a student.
     /// </summary>
     [Function("GetTreinoAtivo")]
     public async Task<HttpResponseData> GetTreinoAtivo(
-        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "alunos/{alunoId}/treino-ativo")] HttpRequestData req,
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "treinos/aluno/{alunoId}/ativo")] HttpRequestData req,
         string alunoId)
     {
         if (_tenantContext.IsAluno && alunoId != _tenantContext.UserId)
