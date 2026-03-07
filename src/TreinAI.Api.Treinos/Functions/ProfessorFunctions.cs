@@ -6,6 +6,7 @@ using TreinAI.Shared.Exceptions;
 using TreinAI.Shared.Middleware;
 using TreinAI.Shared.Models;
 using TreinAI.Shared.Repositories;
+using TreinAI.Shared.Services;
 using TreinAI.Shared.Validation;
 
 namespace TreinAI.Api.Treinos.Functions;
@@ -17,17 +18,20 @@ public class ProfessorFunctions
 {
     private readonly IRepository<Treino> _treinoRepository;
     private readonly IRepository<Aluno> _alunoRepository;
+    private readonly INotificationService _notifications;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<ProfessorFunctions> _logger;
 
     public ProfessorFunctions(
         IRepository<Treino> treinoRepository,
         IRepository<Aluno> alunoRepository,
+        INotificationService notifications,
         TenantContext tenantContext,
         ILogger<ProfessorFunctions> logger)
     {
         _treinoRepository = treinoRepository;
         _alunoRepository = alunoRepository;
+        _notifications = notifications;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -197,6 +201,30 @@ public class ProfessorFunctions
             treinoId, alunoIdDestino, treinoDuplicado.Id);
 
         var created = await _treinoRepository.CreateAsync(treinoDuplicado);
+
+        // E16-02: Notify destination aluno about the new treino
+        try
+        {
+            if (alunoDestino.UserId != null)
+            {
+                var validadeMsg = treinoDuplicado.DataFim.HasValue
+                    ? $" — válido até {treinoDuplicado.DataFim.Value:dd/MM/yyyy}"
+                    : "";
+                await _notifications.CreateAsync(
+                    _tenantContext.TenantId,
+                    alunoDestino.UserId,
+                    "Novo treino disponível",
+                    $"Seu professor atribuiu um novo treino: {treinoDuplicado.Nome}{validadeMsg}.",
+                    "novo_treino",
+                    $"/treinos/{created.Id}",
+                    _tenantContext.UserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send notification for duplicated treino {TreinoId}", created.Id);
+        }
+
         return await ValidationHelper.CreatedAsync(req, created);
     }
 }

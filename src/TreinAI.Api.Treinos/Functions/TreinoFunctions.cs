@@ -7,6 +7,7 @@ using TreinAI.Shared.Exceptions;
 using TreinAI.Shared.Middleware;
 using TreinAI.Shared.Models;
 using TreinAI.Shared.Repositories;
+using TreinAI.Shared.Services;
 using TreinAI.Shared.Validation;
 
 namespace TreinAI.Api.Treinos.Functions;
@@ -19,17 +20,20 @@ public class TreinoFunctions
 {
     private readonly IRepository<Treino> _repository;
     private readonly IRepository<Aluno> _alunoRepo;
+    private readonly INotificationService _notifications;
     private readonly TenantContext _tenantContext;
     private readonly ILogger<TreinoFunctions> _logger;
 
     public TreinoFunctions(
         IRepository<Treino> repository,
         IRepository<Aluno> alunoRepo,
+        INotificationService notifications,
         TenantContext tenantContext,
         ILogger<TreinoFunctions> logger)
     {
         _repository = repository;
         _alunoRepo = alunoRepo;
+        _notifications = notifications;
         _tenantContext = tenantContext;
         _logger = logger;
     }
@@ -129,6 +133,31 @@ public class TreinoFunctions
         _logger.LogInformation("Creating treino '{TreinoNome}' for aluno {AlunoId}", treino.Nome, treino.AlunoId);
 
         var created = await _repository.CreateAsync(treino);
+
+        // E16-02: Notify the aluno about the new treino
+        try
+        {
+            var aluno = await _alunoRepo.GetByIdAsync(treino.AlunoId, _tenantContext.TenantId);
+            if (aluno?.UserId != null)
+            {
+                var validadeMsg = treino.DataFim.HasValue
+                    ? $" — válido até {treino.DataFim.Value:dd/MM/yyyy}"
+                    : "";
+                await _notifications.CreateAsync(
+                    _tenantContext.TenantId,
+                    aluno.UserId,
+                    "Novo treino disponível",
+                    $"Seu professor atribuiu um novo treino: {treino.Nome}{validadeMsg}.",
+                    "novo_treino",
+                    $"/treinos/{created.Id}",
+                    _tenantContext.UserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send notification for new treino {TreinoId}", created.Id);
+        }
+
         return await ValidationHelper.CreatedAsync(req, created);
     }
 
